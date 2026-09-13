@@ -26,7 +26,17 @@ server {
     location /api/ {
         proxy_pass ${BACKEND_ORIGIN}/api/;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        # На PaaS (Render и т.п.) BACKEND_ORIGIN — публичный https-хост
+        # бэкенда, не внутреннее docker-имя. Без proxy_ssl_server_name nginx
+        # не шлёт SNI при исходящем TLS — Render не может понять, к какому
+        # сервису его роутить, и рвёт handshake ("no live upstreams" в
+        # логах). $proxy_host вместо $host — тот же принцип для Host-заголовка:
+        # backend должен увидеть СВОЙ хост (balloon-8bek.onrender.com), а не
+        # хост фронтенда (balloon-1-br0c.onrender.com) — иначе роутинг на
+        # стороне Render уезжает не туда. Оба no-op для локального
+        # docker-compose (http://backend:8080 — без TLS, $proxy_host= "backend").
+        proxy_ssl_server_name on;
+        proxy_set_header Host $proxy_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
