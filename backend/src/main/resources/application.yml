@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://[::1]:5432/vozshar
+    username: app
+    password: app
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  task:
+    scheduling:
+      pool:
+        size: 8
+
+server:
+  port: 8080

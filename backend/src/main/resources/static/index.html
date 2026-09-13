@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <title>Raketka — API tester</title>
+    <style>
+        :root {
+            --bg: #0f1115;
+            --panel: #171a21;
+            --border: #2a2f3a;
+            --text: #e6e8ee;
+            --muted: #8a92a6;
+            --accent: #4f8cff;
+            --ok: #35c46a;
+            --err: #ff5b5b;
+            --warn: #f0b429;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px;
+        }
+        h1 { margin: 0 0 4px; font-size: 18px; }
+        .sub { color: var(--muted); margin-bottom: 20px; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 16px;
+        }
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+        .card h2 {
+            margin: 0 0 12px;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+            font-weight: 600;
+        }
+        label { display: block; color: var(--muted); margin: 8px 0 4px; font-size: 12px; }
+        input, select, button {
+            font: inherit;
+            color: var(--text);
+            background: #0d0f14;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 7px 10px;
+            width: 100%;
+        }
+        input:focus, select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+        button {
+            cursor: pointer;
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+            font-weight: 600;
+            margin-top: 10px;
+            transition: filter .15s;
+        }
+        button:hover { filter: brightness(1.1); }
+        button:active { filter: brightness(0.9); }
+        button.ghost {
+            background: transparent;
+            border-color: var(--border);
+            color: var(--text);
+        }
+        button.danger {
+            background: var(--err);
+            border-color: var(--err);
+        }
+        .row { display: flex; gap: 8px; }
+        .row > * { flex: 1; }
+        pre {
+            margin: 10px 0 0;
+            padding: 10px;
+            background: #0a0c10;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 12px;
+            max-height: 320px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .status { font-size: 12px; margin-top: 6px; }
+        .status.ok { color: var(--ok); }
+        .status.err { color: var(--err); }
+        .status.warn { color: var(--warn); }
+        .kv { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dashed var(--border); }
+        .kv:last-child { border-bottom: none; }
+        .kv span:first-child { color: var(--muted); }
+
+        /* live block */
+        .live-meter {
+            margin-top: 12px;
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            color: var(--ok);
+        }
+        .live-meter.crashed { color: var(--err); }
+        .live-meter.cashed { color: var(--accent); }
+        .progress {
+            height: 6px;
+            background: #0a0c10;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .progress > div {
+            height: 100%;
+            background: linear-gradient(90deg, #4f8cff, #35c46a);
+            width: 0%;
+            transition: width .12s linear;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Raketka · API tester</h1>
+<div class="sub">Ходим напрямую в REST. Никакого Сваггера.</div>
+
+<div class="grid">
+
+    <!-- USER -->
+    <section class="card">
+        <h2>User</h2>
+        <button id="btn-user">GET /api/user</button>
+        <div id="user-out"></div>
+    </section>
+
+    <!-- START ROUND -->
+    <section class="card">
+        <h2>Start round</h2>
+        <label>Theme</label>
+        <select id="in-theme">
+            <option value="RED">RED</option>
+            <option value="GREEN">GREEN</option>
+        </select>
+        <div class="row">
+            <div>
+                <label>betAmount</label>
+                <input id="in-bet" type="number" value="1000" min="1" />
+            </div>
+            <div>
+                <label>boosterMultiplier</label>
+                <select id="in-booster">
+                    <option>1</option>
+                    <option>2</option>
+                    <option>3</option>
+                    <option>4</option>
+                </select>
+            </div>
+        </div>
+        <button id="btn-start">POST /api/round/start</button>
+        <div id="start-out"></div>
+    </section>
+
+    <!-- ROUND STATE / CASHOUT -->
+    <section class="card">
+        <h2>Round state &amp; cashout</h2>
+        <label>roundId</label>
+        <input id="in-round-id" type="number" placeholder="например 12" />
+        <div class="row">
+            <button id="btn-state" class="ghost">GET state</button>
+            <button id="btn-cashout">POST cashout</button>
+        </div>
+
+        <div class="live-meter" id="meter">—</div>
+        <div class="progress"><div id="meter-bar"></div></div>
+
+        <div class="row" style="margin-top:8px">
+            <button id="btn-live" class="ghost">▶ Live poll (500ms)</button>
+            <button id="btn-live-stop" class="ghost">■ Stop</button>
+        </div>
+
+        <div id="state-out"></div>
+    </section>
+
+    <!-- HISTORY -->
+    <section class="card">
+        <h2>History</h2>
+        <label>limit</label>
+        <input id="in-limit" type="number" value="20" min="1" max="100" />
+        <button id="btn-history">GET /api/history</button>
+        <div id="history-out"></div>
+    </section>
+
+    <!-- ADMIN -->
+    <section class="card">
+        <h2>Admin</h2>
+        <button id="btn-reload" class="danger">POST /api/admin/config/reload</button>
+        <div id="admin-out"></div>
+    </section>
+
+</div>
+
+<script src="/auth.js"></script>
+<script>
+    const $ = (id) => document.getElementById(id);
+
+    function setStatus(el, kind, text) {
+        el.innerHTML = `<div class="status ${kind}">${text}</div>`;
+    }
+
+    function pretty(obj) {
+        return `<pre>${JSON.stringify(obj, null, 2)}</pre>`;
+    }
+
+    async function api(method, url, body) {
+        const opts = { method, headers: { 'Accept': 'application/json' } };
+        if (body !== undefined) {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.body = JSON.stringify(body);
+        }
+        const res = await Auth.apiFetch(url, opts);
+        const text = await res.text();
+        let data;
+        try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+        return { ok: res.ok, status: res.status, data };
+    }
+
+    // ---------- user ----------
+    $('btn-user').onclick = async () => {
+        const out = $('user-out');
+        out.innerHTML = '';
+        const r = await api('GET', '/api/user');
+        if (!r.ok) return setStatus(out, 'err', `HTTP ${r.status}: ${JSON.stringify(r.data)}`);
+        out.innerHTML =
+            `<div class="kv"><span>balance</span><b>${r.data.balance}</b></div>` +
+            `<div class="kv"><span>points</span><b>${r.data.points}</b></div>` +
+            pretty(r.data);
+    };
+
+    // ---------- start ----------
+    $('btn-start').onclick = async () => {
+        const out = $('start-out');
+        out.innerHTML = '';
+        const body = {
+            theme: $('in-theme').value,
+            betAmount: Number($('in-bet').value),
+            boosterMultiplier: Number($('in-booster').value),
+        };
+        const r = await api('POST', '/api/round/start', body);
+        if (!r.ok) return setStatus(out, 'err', `HTTP ${r.status}: ${JSON.stringify(r.data)}`);
+        $('in-round-id').value = r.data.roundId;
+        out.innerHTML = setStatus(out, 'ok', `started round #${r.data.roundId}`) + pretty(r.data);
+    };
+
+    // ---------- state ----------
+    function renderState(data) {
+        const m = $('meter');
+        m.classList.remove('crashed', 'cashed');
+        if (data.status === 'CRASHED') m.classList.add('crashed');
+        else if (data.status === 'CASHED_OUT') m.classList.add('cashed');
+        const mult = (data.status === 'IN_PROGRESS')
+            ? data.currentMultiplier
+            : (data.cashoutMultiplier ?? data.crashMultiplier ?? 0);
+        m.textContent = `${(mult ?? 0).toFixed(3)}x  ·  ${data.status}`;
+
+        // прогресс до крэша (если знаем)
+        const bar = $('meter-bar');
+        if (data.status === 'IN_PROGRESS' && data.crashMultiplier == null) {
+            // на IN_PROGRESS crashMultiplier не отдаём — прогресс не строим
+            bar.style.width = '0%';
+        } else if (data.crashMultiplier) {
+            bar.style.width = Math.min(100, (mult / data.crashMultiplier) * 100) + '%';
+        } else {
+            bar.style.width = '0%';
+        }
+    }
+
+    $('btn-state').onclick = async () => {
+        const out = $('state-out');
+        out.innerHTML = '';
+        const id = $('in-round-id').value;
+        if (!id) return setStatus(out, 'warn', 'укажи roundId');
+        const r = await api('GET', `/api/round/${id}/state`);
+        if (!r.ok) return setStatus(out, 'err', `HTTP ${r.status}: ${JSON.stringify(r.data)}`);
+        renderState(r.data);
+        out.innerHTML = pretty(r.data);
+    };
+
+    // ---------- cashout ----------
+    $('btn-cashout').onclick = async () => {
+        const out = $('state-out');
+        out.innerHTML = '';
+        const id = $('in-round-id').value;
+        if (!id) return setStatus(out, 'warn', 'укажи roundId');
+        const r = await api('POST', `/api/round/${id}/cashout`);
+        renderState(r.data);
+        if (!r.ok) {
+            // 409 CONFLICT тоже отдаёт RoundStateResponse
+            out.innerHTML = setStatus(out, 'err', `HTTP ${r.status}`) + pretty(r.data);
+            return;
+        }
+        out.innerHTML = setStatus(out, 'ok', 'cashed out') + pretty(r.data);
+    };
+
+    // ---------- live ----------
+    let liveTimer = null;
+    $('btn-live').onclick = () => {
+        if (liveTimer) return;
+        const id = $('in-round-id').value;
+        if (!id) return;
+        liveTimer = setInterval(async () => {
+            const r = await api('GET', `/api/round/${id}/state`);
+            if (!r.ok) return;
+            renderState(r.data);
+            if (r.data.status !== 'IN_PROGRESS') {
+                clearInterval(liveTimer); liveTimer = null;
+            }
+        }, 500);
+    };
+    $('btn-live-stop').onclick = () => {
+        if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+    };
+
+    // ---------- history ----------
+    $('btn-history').onclick = async () => {
+        const out = $('history-out');
+        out.innerHTML = '';
+        const limit = Number($('in-limit').value || 20);
+        const r = await api('GET', `/api/history?limit=${limit}`);
+        if (!r.ok) return setStatus(out, 'err', `HTTP ${r.status}: ${JSON.stringify(r.data)}`);
+        const rows = r.data.map(h => `
+    <div class="kv">
+      <span>${h.theme} · ${h.result}</span>
+      <b>${h.crashMultiplier.toFixed(2)}x${h.cashoutMultiplier ? ' (cash ' + h.cashoutMultiplier.toFixed(2) + 'x)' : ''} · ${h.pointsEarned}p</b>
+    </div>`).join('');
+        out.innerHTML = (rows || '<div class="status warn">пусто</div>') + pretty(r.data);
+    };
+
+    // ---------- admin ----------
+    $('btn-reload').onclick = async () => {
+        const out = $('admin-out');
+        out.innerHTML = '';
+        const r = await api('POST', '/api/admin/config/reload');
+        if (!r.ok) return setStatus(out, 'err', `HTTP ${r.status}: ${JSON.stringify(r.data)}`);
+        out.innerHTML = setStatus(out, 'ok', 'config reloaded') + pretty(r.data);
+    };
+
+    // bootstrap guest session BEFORE first data request
+    (async () => {
+        await Auth.ensureGuest();
+        $('btn-user').click();
+    })();
+</script>
+
+</body>
+</html>

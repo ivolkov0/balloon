@@ -1,0 +1,35 @@
+# Запуск: docker compose up -d --build
+# Бэкенд будет на http://localhost:8080, Postgres — на localhost:5432 (app/app/vozshar).
+# На этой машине нет Java 25/Maven на PATH (только Java 8) — сборка идёт внутри
+# контейнера (см. Dockerfile), хост трогать не нужно.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: vozshar
+    ports:
+      - "5432:5432"
+    volumes:
+      - raketka-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d vozshar"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vozshar
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: app
+
+volumes:
+  raketka-pg-data:

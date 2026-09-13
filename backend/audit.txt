@@ -1,0 +1,2117 @@
+﻿===== D:\project\Raketka\src\main\java\com\crash\Raketka\config\ConfigService.java =====
+package com.crash.Raketka.config;
+
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.io.File;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class ConfigService {
+
+    private static final Logger log = LoggerFactory.getLogger(ConfigService.class);
+
+    private static final double PROBABILITY_SUM_MIN = 0.99;
+    private static final double PROBABILITY_SUM_MAX = 1.01;
+    private static final double HOUSE_EDGE_MAX_EXCLUSIVE = 0.5;
+
+    private final JsonMapper jsonMapper;
+
+    @Value("${CONFIG_PATH:./config.json}")
+    private String configPath;
+
+    private volatile GameConfig current;
+
+    public ConfigService(JsonMapper jsonMapper) {
+        this.jsonMapper = jsonMapper;
+    }
+
+    @PostConstruct
+    public void load() {
+        GameConfig loaded = readAndValidate();
+        this.current = loaded;
+        log.info("GameConfig loaded successfully from {}", configPath);
+    }
+
+    public GameConfig get() {
+        return current;
+    }
+
+    public void reload() {
+        GameConfig loaded;
+        try {
+            loaded = readAndValidate();
+        } catch (IllegalArgumentException e) {
+            log.error("Config reload rejected, keeping previous config: {}", e.getMessage());
+            throw e;
+        }
+        this.current = loaded;
+        log.info("GameConfig reloaded successfully from {}", configPath);
+    }
+
+    private GameConfig readAndValidate() {
+        File file = new File(configPath);
+        if (!file.exists() || !file.isFile()) {
+            throw new IllegalArgumentException("Config file not found at " + configPath);
+        }
+
+        GameConfig config;
+        try {
+            config = jsonMapper.readValue(file, GameConfig.class);
+        } catch (JacksonException e) {
+            log.error("Failed to parse config file at {}: {}", configPath, e.getMessage());
+            throw new IllegalArgumentException("Unable to parse config file at " + configPath, e);
+        }
+        validate(config);
+        return config;
+    }
+
+    private void validate(GameConfig config) {
+        if (config.getMinCrashMultiplier() <= 1.0) {
+            throw new IllegalArgumentException(
+                    "minCrashMultiplier must be > 1.0, got " + config.getMinCrashMultiplier());
+        }
+        if (config.getMaxMultiplier() <= config.getMinCrashMultiplier()) {
+            throw new IllegalArgumentException(
+                    "maxMultiplier (" + config.getMaxMultiplier()
+                            + ") must be > minCrashMultiplier (" + config.getMinCrashMultiplier() + ")");
+        }
+        if (config.getMultiplierGrowthRate() <= 0) {
+            throw new IllegalArgumentException(
+                    "multiplierGrowthRate must be > 0, got " + config.getMultiplierGrowthRate());
+        }
+        if (config.getHouseEdge() < 0.0 || config.getHouseEdge() >= HOUSE_EDGE_MAX_EXCLUSIVE) {
+            throw new IllegalArgumentException(
+                    "houseEdge must be in [0, 0.5), got " + config.getHouseEdge());
+        }
+
+        Map<String, GameConfig.ThemeConfig> themes = config.getThemes();
+        if (themes == null || themes.isEmpty()) {
+            throw new IllegalArgumentException("themes must not be empty");
+        }
+        for (Map.Entry<String, GameConfig.ThemeConfig> entry : themes.entrySet()) {
+            String themeName = entry.getKey();
+            GameConfig.ThemeConfig themeConfig = entry.getValue();
+            if (themeConfig == null) {
+                throw new IllegalArgumentException("theme " + themeName + " has null config");
+            }
+            List<Double> lineProbabilities = themeConfig.getLineProbabilities();
+            if (lineProbabilities == null || lineProbabilities.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "theme " + themeName + " has empty lineProbabilities");
+            }
+            double sum = 0.0;
+            for (Double p : lineProbabilities) {
+                if (p == null) {
+                    throw new IllegalArgumentException(
+                            "theme " + themeName + " has a null entry in lineProbabilities");
+                }
+                sum += p;
+            }
+            if (sum < PROBABILITY_SUM_MIN || sum > PROBABILITY_SUM_MAX) {
+                throw new IllegalArgumentException(
+                        "theme " + themeName + " lineProbabilities sum out of range [0.99, 1.01]: " + sum);
+            }
+            List<Double> boosterMultipliers = themeConfig.getBoosterMultipliers();
+            if (boosterMultipliers == null || boosterMultipliers.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "theme " + themeName + " has empty boosterMultipliers");
+            }
+            if (lineProbabilities.size() != boosterMultipliers.size()) {
+                throw new IllegalArgumentException(
+                        "theme " + themeName + " lineProbabilities.size() (" + lineProbabilities.size()
+                                + ") must equal boosterMultipliers.size() (" + boosterMultipliers.size() + ")");
+            }
+        }
+
+        Map<String, Double> rewardWeights = config.getRewardWeights();
+        if (rewardWeights == null || rewardWeights.isEmpty()) {
+            throw new IllegalArgumentException("rewardWeights must not be empty");
+        }
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\config\GameConfig.java =====
+package com.crash.Raketka.config;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.util.List;
+import java.util.Map;
+
+public class GameConfig {
+
+    @JsonProperty("minCrashMultiplier")
+    private double minCrashMultiplier;
+
+    @JsonProperty("maxMultiplier")
+    private double maxMultiplier;
+
+    @JsonProperty("multiplierGrowthRate")
+    private double multiplierGrowthRate;
+
+    @JsonProperty("houseEdge")
+    private double houseEdge;
+
+    @JsonProperty("pollIntervalMs")
+    private int pollIntervalMs;
+
+    @JsonProperty("pointsPerLine")
+    private int pointsPerLine;
+
+    @JsonProperty("pointsCashoutBonus")
+    private int pointsCashoutBonus;
+
+    @JsonProperty("pointsBoosterBonus")
+    private int pointsBoosterBonus;
+
+    @JsonProperty("startingBalance")
+    private int startingBalance;
+
+    @JsonProperty("fixedSeed")
+    private Long fixedSeed;
+
+    @JsonProperty("themes")
+    private Map<String, ThemeConfig> themes;
+
+    @JsonProperty("rewardWeights")
+    private Map<String, Double> rewardWeights;
+
+    public GameConfig() {
+    }
+
+    public double getMinCrashMultiplier() {
+        return minCrashMultiplier;
+    }
+
+    public void setMinCrashMultiplier(double minCrashMultiplier) {
+        this.minCrashMultiplier = minCrashMultiplier;
+    }
+
+    public double getMaxMultiplier() {
+        return maxMultiplier;
+    }
+
+    public void setMaxMultiplier(double maxMultiplier) {
+        this.maxMultiplier = maxMultiplier;
+    }
+
+    public double getMultiplierGrowthRate() {
+        return multiplierGrowthRate;
+    }
+
+    public void setMultiplierGrowthRate(double multiplierGrowthRate) {
+        this.multiplierGrowthRate = multiplierGrowthRate;
+    }
+
+    public double getHouseEdge() {
+        return houseEdge;
+    }
+
+    public void setHouseEdge(double houseEdge) {
+        this.houseEdge = houseEdge;
+    }
+
+    public int getPollIntervalMs() {
+        return pollIntervalMs;
+    }
+
+    public void setPollIntervalMs(int pollIntervalMs) {
+        this.pollIntervalMs = pollIntervalMs;
+    }
+
+    public int getPointsPerLine() {
+        return pointsPerLine;
+    }
+
+    public void setPointsPerLine(int pointsPerLine) {
+        this.pointsPerLine = pointsPerLine;
+    }
+
+    public int getPointsCashoutBonus() {
+        return pointsCashoutBonus;
+    }
+
+    public void setPointsCashoutBonus(int pointsCashoutBonus) {
+        this.pointsCashoutBonus = pointsCashoutBonus;
+    }
+
+    public int getPointsBoosterBonus() {
+        return pointsBoosterBonus;
+    }
+
+    public void setPointsBoosterBonus(int pointsBoosterBonus) {
+        this.pointsBoosterBonus = pointsBoosterBonus;
+    }
+
+    public int getStartingBalance() {
+        return startingBalance;
+    }
+
+    public void setStartingBalance(int startingBalance) {
+        this.startingBalance = startingBalance;
+    }
+
+    public Long getFixedSeed() {
+        return fixedSeed;
+    }
+
+    public void setFixedSeed(Long fixedSeed) {
+        this.fixedSeed = fixedSeed;
+    }
+
+    public Map<String, ThemeConfig> getThemes() {
+        return themes;
+    }
+
+    public void setThemes(Map<String, ThemeConfig> themes) {
+        this.themes = themes;
+    }
+
+    public Map<String, Double> getRewardWeights() {
+        return rewardWeights;
+    }
+
+    public void setRewardWeights(Map<String, Double> rewardWeights) {
+        this.rewardWeights = rewardWeights;
+    }
+
+    public static class ThemeConfig {
+
+        @JsonProperty("lineProbabilities")
+        private List<Double> lineProbabilities;
+
+        @JsonProperty("boosterMultipliers")
+        private List<Double> boosterMultipliers;
+
+        @JsonProperty("levelsTotal")
+        private int levelsTotal;
+
+        public ThemeConfig() {
+        }
+
+        public List<Double> getLineProbabilities() {
+            return lineProbabilities;
+        }
+
+        public void setLineProbabilities(List<Double> lineProbabilities) {
+            this.lineProbabilities = lineProbabilities;
+        }
+
+        public List<Double> getBoosterMultipliers() {
+            return boosterMultipliers;
+        }
+
+        public void setBoosterMultipliers(List<Double> boosterMultipliers) {
+            this.boosterMultipliers = boosterMultipliers;
+        }
+
+        public int getLevelsTotal() {
+            return levelsTotal;
+        }
+
+        public void setLevelsTotal(int levelsTotal) {
+            this.levelsTotal = levelsTotal;
+        }
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\config\SchedulingConfig.java =====
+package com.crash.Raketka.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+@Configuration
+@EnableScheduling
+public class SchedulingConfig {
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\config\WebConfig.java =====
+package com.crash.Raketka.config;
+
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class WebConfig {
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\controller\AdminController.java =====
+package com.crash.Raketka.controller;
+
+import com.crash.Raketka.config.ConfigService;
+import com.crash.Raketka.dto.ErrorResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/admin")
+public class AdminController {
+
+    private final ConfigService configService;
+
+    public AdminController(ConfigService configService) {
+        this.configService = configService;
+    }
+
+    @PostMapping("/config/reload")
+    public ResponseEntity<?> reloadConfig() {
+        try {
+            configService.reload();
+            return ResponseEntity.ok(Map.of("ok", true));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse("CONFIG_INVALID", e.getMessage()));
+        }
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\controller\AuthController.java =====
+package com.crash.Raketka.controller;
+
+import com.crash.Raketka.domain.User;
+import com.crash.Raketka.dto.AuthResponse;
+import com.crash.Raketka.dto.LoginRequest;
+import com.crash.Raketka.dto.RegisterRequest;
+import com.crash.Raketka.repository.UserRepository;
+import com.crash.Raketka.service.AuthService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/auth")
+public class AuthController {
+
+    private final AuthService authService;
+    private final UserRepository userRepository;
+
+    public AuthController(AuthService authService, UserRepository userRepository) {
+        this.authService = authService;
+        this.userRepository = userRepository;
+    }
+
+    @PostMapping("/register")
+    public AuthResponse register(@RequestBody RegisterRequest req) {
+        return authService.register(req);
+    }
+
+    @PostMapping("/login")
+    public AuthResponse login(@RequestBody LoginRequest req) {
+        return authService.login(req);
+    }
+
+    @PostMapping("/guest")
+    public AuthResponse guest() {
+        return authService.guest();
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @RequestHeader(value = "X-Session-Token", required = false) String token) {
+        authService.logout(token);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/me")
+    public AuthResponse me(Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BadCredentialsException("invalid credentials"));
+        return new AuthResponse(user.getId(), user.getUsername(), user.getBalance(), user.getPoints(), null);
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\controller\HistoryController.java =====
+package com.crash.Raketka.controller;
+
+import com.crash.Raketka.domain.Round;
+import com.crash.Raketka.dto.HistoryItemResponse;
+import com.crash.Raketka.repository.RoundRepository;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/history")
+public class HistoryController {
+
+    private final RoundRepository roundRepository;
+
+    public HistoryController(RoundRepository roundRepository) {
+        this.roundRepository = roundRepository;
+    }
+
+    @GetMapping("")
+    public List<HistoryItemResponse> history(Authentication auth,
+                                             @RequestParam(defaultValue = "20") int limit) {
+        Long userId = (Long) auth.getPrincipal();
+        if (limit < 1) limit = 1;
+        if (limit > 100) limit = 100;
+
+        List<Round> rounds = roundRepository
+                .findByUserIdAndFinishedAtIsNotNullOrderByFinishedAtDesc(
+                        userId, Pageable.ofSize(limit));
+
+        return rounds.stream()
+                .map(round -> new HistoryItemResponse(
+                        round.getTheme(),
+                        round.getBetAmount(),
+                        round.getCashoutMultiplier(),
+                        round.getCrashMultiplier(),
+                        round.getCashoutMultiplier() != null ? "WIN" : "LOSS",
+                        round.getPointsEarned()
+                ))
+                .toList();
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\controller\RoundController.java =====
+package com.crash.Raketka.controller;
+
+import com.crash.Raketka.dto.RoundStateResponse;
+import com.crash.Raketka.dto.StartRoundRequest;
+import com.crash.Raketka.dto.StartRoundResponse;
+import com.crash.Raketka.service.RoundService;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/round")
+public class RoundController {
+
+    private final RoundService roundService;
+
+    public RoundController(RoundService roundService) {
+        this.roundService = roundService;
+    }
+
+    @PostMapping("/start")
+    public StartRoundResponse start(Authentication auth, @RequestBody StartRoundRequest request) {
+        return roundService.startRound((Long) auth.getPrincipal(), request);
+    }
+
+    @GetMapping("/{id}/state")
+    public RoundStateResponse state(Authentication auth, @PathVariable Long id) {
+        return roundService.getState((Long) auth.getPrincipal(), id);
+    }
+
+    @PostMapping("/{id}/cashout")
+    public RoundStateResponse cashout(Authentication auth, @PathVariable Long id) {
+        return roundService.cashout((Long) auth.getPrincipal(), id);
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\controller\UserController.java =====
+package com.crash.Raketka.controller;
+
+import com.crash.Raketka.dto.UserResponse;
+import com.crash.Raketka.service.UserService;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/user")
+public class UserController {
+
+    private final UserService userService;
+
+    public UserController(UserService userService) {
+        this.userService = userService;
+    }
+
+    @GetMapping("")
+    public UserResponse getUser(Authentication auth) {
+        return userService.getProfile((Long) auth.getPrincipal());
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\domain\Reward.java =====
+package com.crash.Raketka.domain;
+
+public enum Reward {
+    PUZZLE_A,
+    PUZZLE_B,
+    PUZZLE_C,
+    PUZZLE_D
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\domain\Round.java =====
+package com.crash.Raketka.domain;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+
+@Entity
+@Table(name = "rounds")
+public class Round {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Enumerated(EnumType.STRING)
+    private Theme theme;
+
+    private int betAmount;
+
+    private int boosterMultiplier;
+
+    private double crashMultiplier;
+
+    private int boosterLine;
+
+    private boolean boosterTriggered;
+
+    private Double cashoutMultiplier;
+
+    @Enumerated(EnumType.STRING)
+    private RoundStatus status;
+
+    private int pointsEarned;
+
+    @Enumerated(EnumType.STRING)
+    private Reward reward;
+
+    private Instant startedAt;
+
+    private Instant finishedAt;
+
+    private String serverSeed;
+
+    private String seedHash;
+
+    @Column(columnDefinition = "text")
+    private String configSnapshotJson;
+
+    @Version
+    private Long version;
+
+    @Column(nullable = false)
+    private Long userId;
+
+    protected Round() {
+    }
+
+    public Round(Theme theme,
+                 Long userId,
+                 int betAmount,
+                 int boosterMultiplier,
+                 double crashMultiplier,
+                 int boosterLine,
+                 boolean boosterTriggered,
+                 RoundStatus status,
+                 int pointsEarned,
+                 Instant startedAt,
+                 String serverSeed,
+                 String seedHash,
+                 String configSnapshotJson) {
+        this.theme = theme;
+        this.userId = userId;
+        this.betAmount = betAmount;
+        this.boosterMultiplier = boosterMultiplier;
+        this.crashMultiplier = crashMultiplier;
+        this.boosterLine = boosterLine;
+        this.boosterTriggered = boosterTriggered;
+        this.status = status;
+        this.pointsEarned = pointsEarned;
+        this.startedAt = startedAt;
+        this.serverSeed = serverSeed;
+        this.seedHash = seedHash;
+        this.configSnapshotJson = configSnapshotJson;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public Theme getTheme() {
+        return theme;
+    }
+
+    public void setTheme(Theme theme) {
+        this.theme = theme;
+    }
+
+    public int getBetAmount() {
+        return betAmount;
+    }
+
+    public void setBetAmount(int betAmount) {
+        this.betAmount = betAmount;
+    }
+
+    public int getBoosterMultiplier() {
+        return boosterMultiplier;
+    }
+
+    public void setBoosterMultiplier(int boosterMultiplier) {
+        this.boosterMultiplier = boosterMultiplier;
+    }
+
+    public double getCrashMultiplier() {
+        return crashMultiplier;
+    }
+
+    public void setCrashMultiplier(double crashMultiplier) {
+        this.crashMultiplier = crashMultiplier;
+    }
+
+    public int getBoosterLine() {
+        return boosterLine;
+    }
+
+    public void setBoosterLine(int boosterLine) {
+        this.boosterLine = boosterLine;
+    }
+
+    public boolean isBoosterTriggered() {
+        return boosterTriggered;
+    }
+
+    public void setBoosterTriggered(boolean boosterTriggered) {
+        this.boosterTriggered = boosterTriggered;
+    }
+
+    public Double getCashoutMultiplier() {
+        return cashoutMultiplier;
+    }
+
+    public void setCashoutMultiplier(Double cashoutMultiplier) {
+        this.cashoutMultiplier = cashoutMultiplier;
+    }
+
+    public RoundStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(RoundStatus status) {
+        this.status = status;
+    }
+
+    public int getPointsEarned() {
+        return pointsEarned;
+    }
+
+    public void setPointsEarned(int pointsEarned) {
+        this.pointsEarned = pointsEarned;
+    }
+
+    public Reward getReward() {
+        return reward;
+    }
+
+    public void setReward(Reward reward) {
+        this.reward = reward;
+    }
+
+    public Instant getStartedAt() {
+        return startedAt;
+    }
+
+    public void setStartedAt(Instant startedAt) {
+        this.startedAt = startedAt;
+    }
+
+    public Instant getFinishedAt() {
+        return finishedAt;
+    }
+
+    public void setFinishedAt(Instant finishedAt) {
+        this.finishedAt = finishedAt;
+    }
+
+    public String getServerSeed() {
+        return serverSeed;
+    }
+
+    public void setServerSeed(String serverSeed) {
+        this.serverSeed = serverSeed;
+    }
+
+    public String getSeedHash() {
+        return seedHash;
+    }
+
+    public void setSeedHash(String seedHash) {
+        this.seedHash = seedHash;
+    }
+
+    public String getConfigSnapshotJson() {
+        return configSnapshotJson;
+    }
+
+    public void setConfigSnapshotJson(String configSnapshotJson) {
+        this.configSnapshotJson = configSnapshotJson;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
+    }
+
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\domain\RoundStatus.java =====
+package com.crash.Raketka.domain;
+
+public enum RoundStatus {
+    IN_PROGRESS,
+    CASHED_OUT,
+    CRASHED
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\domain\Theme.java =====
+package com.crash.Raketka.domain;
+
+public enum Theme {
+    RED,
+    GREEN
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\domain\User.java =====
+package com.crash.Raketka.domain;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+
+@Entity
+@Table(name = "users")
+public class User {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    private String passwordHash;
+
+    private int balance;
+
+    private int points;
+
+    @Version
+    private Long version;
+
+    protected User() {
+    }
+
+    public User(String username, String passwordHash, int balance, int points) {
+        this.username = username;
+        this.passwordHash = passwordHash;
+        this.balance = balance;
+        this.points = points;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
+    public int getBalance() {
+        return balance;
+    }
+
+    public void setBalance(int balance) {
+        this.balance = balance;
+    }
+
+    public int getPoints() {
+        return points;
+    }
+
+    public void setPoints(int points) {
+        this.points = points;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\dto\AuthResponse.java =====
+package com.crash.Raketka.dto;
+
+public record AuthResponse(Long userId, String username, int balance,
+                           int points, String token) {
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\dto\ErrorResponse.java =====
+package com.crash.Raketka.dto;
+
+public record ErrorResponse(String code, String message) {
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\dto\HistoryItemResponse.java =====
+package com.crash.Raketka.dto;
+
+import com.crash.Raketka.domain.Theme;
+
+public record HistoryItemResponse(
+        Theme theme,
+        int betAmount,
+        Double cashoutMultiplier,
+        double crashMultiplier,
+        String result,
+        int pointsEarned
+) {
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\dto\LoginRequest.java =====
+package com.crash.Raketka.dto;
+
+public record LoginRequest(String username, String password) {
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\dto\RegisterRequest.java =====
+package com.crash.Raketka.dto;
+
+public record RegisterRequest(String username, String password) {
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\dto\RoundStateResponse.java =====
+package com.crash.Raketka.dto;
+
+public record RoundStateResponse(
+        String status,
+        double currentMultiplier,
+        int levelsPassed,
+        boolean boosterTriggered,
+        Double cashoutMultiplier,
+        Double crashMultiplier,
+        Integer pointsEarned,
+        String reward,
+        Double missedMultiplier,
+        String serverSeed
+) {
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\dto\StartRoundRequest.java =====
+package com.crash.Raketka.dto;
+
+import com.crash.Raketka.domain.Theme;
+
+public record StartRoundRequest(Theme theme, int betAmount, int boosterMultiplier) {
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\dto\StartRoundResponse.java =====
+package com.crash.Raketka.dto;
+
+import com.crash.Raketka.domain.Theme;
+
+import java.time.Instant;
+
+public record StartRoundResponse(
+        Long roundId,
+        String seedHash,
+        Instant startedAt,
+        Theme theme,
+        int levelsTotal,
+        int betAmount,
+        int boosterMultiplier
+) {
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\dto\UserResponse.java =====
+package com.crash.Raketka.dto;
+
+public record UserResponse(Long userId, String username,
+                           int balance, int points) {
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\exception\ApiExceptionHandler.java =====
+package com.crash.Raketka.exception;
+
+import com.crash.Raketka.dto.ErrorResponse;
+import com.crash.Raketka.dto.RoundStateResponse;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.util.Map;
+import java.util.NoSuchElementException;
+
+@RestControllerAdvice
+public class ApiExceptionHandler {
+
+    @ExceptionHandler(NotEnoughBalanceException.class)
+    public ResponseEntity<ErrorResponse> handleNotEnoughBalance(NotEnoughBalanceException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("NOT_ENOUGH_BALANCE", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RoundAlreadyCrashedException.class)
+    public ResponseEntity<RoundStateResponse> handleRoundAlreadyCrashed(RoundAlreadyCrashedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getState());
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleBadRequest(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("BAD_REQUEST", ex.getMessage()));
+    }
+
+    @ExceptionHandler(NoSuchElementException.class)
+    public ResponseEntity<ErrorResponse> handleNotFound(NoSuchElementException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("NOT_FOUND", ex.getMessage()));
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleOptimisticLock(OptimisticLockingFailureException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("CONFLICT", "round already modified"));
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<Map<String, String>> handleBadCredentials(BadCredentialsException ex) {
+        return ResponseEntity.status(401)
+                .body(Map.of("code", "UNAUTHORIZED", "message", "invalid credentials"));
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\exception\NotEnoughBalanceException.java =====
+package com.crash.Raketka.exception;
+
+public class NotEnoughBalanceException extends RuntimeException {
+
+    public NotEnoughBalanceException(String message) {
+        super(message);
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\exception\RoundAlreadyCrashedException.java =====
+package com.crash.Raketka.exception;
+
+import com.crash.Raketka.dto.RoundStateResponse;
+
+public class RoundAlreadyCrashedException extends RuntimeException {
+
+    private final RoundStateResponse state;
+
+    public RoundAlreadyCrashedException(String message, RoundStateResponse state) {
+        super(message);
+        this.state = state;
+    }
+
+    public RoundStateResponse getState() {
+        return state;
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\repository\RoundRepository.java =====
+package com.crash.Raketka.repository;
+
+import com.crash.Raketka.domain.Round;
+import com.crash.Raketka.domain.RoundStatus;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface RoundRepository extends JpaRepository<Round, Long> {
+
+    List<Round> findByStatus(RoundStatus status);
+
+    List<Round> findByUserIdAndFinishedAtIsNotNullOrderByFinishedAtDesc(Long userId, Pageable pageable);
+
+    Optional<Round> findByIdAndUserId(Long id, Long userId);
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\repository\UserRepository.java =====
+package com.crash.Raketka.repository;
+
+import com.crash.Raketka.domain.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+
+    Optional<User> findByUsername(String username);
+
+    boolean existsByUsername(String username);
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\security\SecurityConfig.java =====
+package com.crash.Raketka.security;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.util.Map;
+
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    private final JsonMapper jsonMapper;
+
+    public SecurityConfig(JsonMapper jsonMapper) {
+        this.jsonMapper = jsonMapper;
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http, TokenAuthFilter tokenAuthFilter) throws Exception {
+        http
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/v3/api-docs/**",
+                                "/",
+                                "/*.html",
+                                "/*.js",
+                                "/*.css",
+                                "/favicon.ico"
+                        ).permitAll()
+                        .anyRequest().authenticated()
+                )
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(401);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    jsonMapper.writeValue(
+                            response.getOutputStream(),
+                            Map.of(
+                                    "code", "UNAUTHORIZED",
+                                    "message", "authentication required"
+                            ));
+                }))
+                .addFilterBefore(tokenAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\security\SessionService.java =====
+package com.crash.Raketka.security;
+
+import org.springframework.stereotype.Service;
+
+import java.security.SecureRandom;
+import java.util.HexFormat;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+
+@Service
+public class SessionService {
+
+    private final ConcurrentHashMap<String, Long> tokens = new ConcurrentHashMap<>();
+    private final SecureRandom random = new SecureRandom();
+
+    public String create(Long userId) {
+        byte[] bytes = new byte[32];
+        random.nextBytes(bytes);
+        String token = HexFormat.of().formatHex(bytes);
+        tokens.put(token, userId);
+        return token;
+    }
+
+    public Optional<Long> resolve(String token) {
+        if (token == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(tokens.get(token));
+    }
+
+    public void invalidate(String token) {
+        if (token != null) {
+            tokens.remove(token);
+        }
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\security\TokenAuthFilter.java =====
+package com.crash.Raketka.security;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Optional;
+
+@Component
+public class TokenAuthFilter extends OncePerRequestFilter {
+
+    private static final String HEADER = "X-Session-Token";
+
+    private final SessionService sessionService;
+
+    public TokenAuthFilter(SessionService sessionService) {
+        this.sessionService = sessionService;
+    }
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain)
+            throws ServletException, IOException {
+
+        String token = request.getHeader(HEADER);
+        if (token != null) {
+            Optional<Long> userId = sessionService.resolve(token);
+            if (userId.isPresent()) {
+                UsernamePasswordAuthenticationToken authentication =
+                        new UsernamePasswordAuthenticationToken(
+                                userId.get(),
+                                null,
+                                List.of(new SimpleGrantedAuthority("ROLE_USER")));
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            }
+        }
+
+        filterChain.doFilter(request, response);
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\service\AuthService.java =====
+package com.crash.Raketka.service;
+
+import com.crash.Raketka.config.ConfigService;
+import com.crash.Raketka.domain.User;
+import com.crash.Raketka.dto.AuthResponse;
+import com.crash.Raketka.dto.LoginRequest;
+import com.crash.Raketka.dto.RegisterRequest;
+import com.crash.Raketka.repository.UserRepository;
+import com.crash.Raketka.security.SessionService;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import java.security.SecureRandom;
+import java.util.HexFormat;
+
+@Service
+public class AuthService {
+
+    private final UserRepository userRepository;
+    private final SessionService sessionService;
+    private final PasswordEncoder passwordEncoder;
+    private final ConfigService configService;
+    private final SecureRandom random = new SecureRandom();
+
+    public AuthService(UserRepository userRepository,
+                       SessionService sessionService,
+                       PasswordEncoder passwordEncoder,
+                       ConfigService configService) {
+        this.userRepository = userRepository;
+        this.sessionService = sessionService;
+        this.passwordEncoder = passwordEncoder;
+        this.configService = configService;
+    }
+
+    public AuthResponse register(RegisterRequest req) {
+        if (req.username() == null || req.username().length() < 3) {
+            throw new IllegalArgumentException("username too short");
+        }
+        if (req.password() == null || req.password().length() < 4) {
+            throw new IllegalArgumentException("password too short");
+        }
+        if (userRepository.existsByUsername(req.username())) {
+            throw new IllegalArgumentException("USERNAME_TAKEN");
+        }
+
+        User user = new User(
+                req.username(),
+                passwordEncoder.encode(req.password()),
+                configService.get().getStartingBalance(),
+                0
+        );
+        user = userRepository.save(user);
+        String token = sessionService.create(user.getId());
+        return new AuthResponse(user.getId(), user.getUsername(), user.getBalance(), user.getPoints(), token);
+    }
+
+    public AuthResponse login(LoginRequest req) {
+        User user = userRepository.findByUsername(req.username())
+                .orElseThrow(() -> new BadCredentialsException("invalid credentials"));
+
+        if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
+            throw new BadCredentialsException("invalid credentials");
+        }
+
+        String token = sessionService.create(user.getId());
+        return new AuthResponse(user.getId(), user.getUsername(), user.getBalance(), user.getPoints(), token);
+    }
+
+    public AuthResponse guest() {
+        String username;
+        do {
+            byte[] bytes = new byte[4];
+            random.nextBytes(bytes);
+            username = "guest-" + HexFormat.of().formatHex(bytes);
+        } while (userRepository.existsByUsername(username));
+
+        User user = new User(
+                username,
+                null,
+                configService.get().getStartingBalance(),
+                0
+        );
+        user = userRepository.save(user);
+        String token = sessionService.create(user.getId());
+        return new AuthResponse(user.getId(), user.getUsername(), user.getBalance(), user.getPoints(), token);
+    }
+
+    public void logout(String token) {
+        sessionService.invalidate(token);
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\service\CrashMathService.java =====
+package com.crash.Raketka.service;
+
+import com.crash.Raketka.config.GameConfig;
+import com.crash.Raketka.domain.Reward;
+import com.crash.Raketka.domain.Theme;
+import org.springframework.stereotype.Service;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class CrashMathService {
+
+    // РЇРІРЅРѕ С„РёРєСЃРёСЂСѓРµРј Р°Р»РіРѕСЂРёС‚Рј: РїР»Р°С‚С„РѕСЂРјРµРЅРЅС‹Р№ РґРµС„РѕР»С‚ SecureRandom (РЅР°РїСЂРёРјРµСЂ,
+    // NativePRNG РЅР° Linux) РЅРµ РіР°СЂР°РЅС‚РёСЂСѓРµС‚ РґРµС‚РµСЂРјРёРЅРёСЂРѕРІР°РЅРЅРѕСЃС‚СЊ РїРѕ seed вЂ”
+    // РјРѕР¶РµС‚ РїРѕРґРјРµС€РёРІР°С‚СЊ СЌРЅС‚СЂРѕРїРёСЋ РћРЎ. SHA1PRNG РґРµС‚РµСЂРјРёРЅРёСЂРѕРІР°РЅ РїСЂРё setSeed
+    // РґРѕ РїРµСЂРІРѕРіРѕ РІС‹Р·РѕРІР° nextDouble()/nextBytes().
+    private static final String DETERMINISTIC_RNG_ALGORITHM = "SHA1PRNG";
+    private static final String HMAC_ALGORITHM = "HmacSHA256";
+
+    public double computeCrashMultiplier(GameConfig config, SecureRandom rng) {
+        double r = rng.nextDouble();
+        double crash = (1.0 - config.getHouseEdge()) / (1.0 - r);
+        return Math.min(Math.max(crash, config.getMinCrashMultiplier()), config.getMaxMultiplier());
+    }
+
+    public double computeCurrentMultiplier(double growthRate, Instant startedAt, Instant now) {
+        double t = Duration.between(startedAt, now).toMillis() / 1000.0;
+        return Math.exp(growthRate * t);
+    }
+
+    public int pickBoosterLine(Theme theme, GameConfig config, SecureRandom rng) {
+        GameConfig.ThemeConfig themeConfig = requireThemeConfig(theme, config);
+        List<Double> lineProbabilities = themeConfig.getLineProbabilities();
+
+        double total = 0.0;
+        for (Double p : lineProbabilities) {
+            total += p;
+        }
+
+        double r = rng.nextDouble() * total;
+        double cumulative = 0.0;
+        for (int i = 0; i < lineProbabilities.size(); i++) {
+            cumulative += lineProbabilities.get(i);
+            if (r < cumulative) {
+                return i;
+            }
+        }
+        return lineProbabilities.size() - 1;
+    }
+
+    /**
+     * Р”РµС‚РµСЂРјРёРЅРёСЂРѕРІР°РЅРЅС‹Р№ РІС‹РІРѕРґ crash РёР· serverSeed СЂР°СѓРЅРґР°. РџР°СЂР°РјРµС‚СЂ theme
+     * РЅР°РјРµСЂРµРЅРЅРѕ РЅРµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ (РєСЂР°С… РјР°С‚РµРјР°С‚РёС‡РµСЃРєРё РѕС‚ С‚РµРјС‹ РЅРµ Р·Р°РІРёСЃРёС‚) вЂ”
+     * РѕСЃС‚Р°РІР»РµРЅ СЂР°РґРё СЃРёРіРЅР°С‚СѓСЂС‹ РёР· РўР—.
+     */
+    public double computeCrashFromSeed(String serverSeed, GameConfig config, Theme theme) {
+        SecureRandom rng = deterministicRngFor(serverSeed, "crash");
+        return computeCrashMultiplier(config, rng);
+    }
+
+    /**
+     * Р”РµС‚РµСЂРјРёРЅРёСЂРѕРІР°РЅРЅС‹Р№ РІС‹РІРѕРґ boosterLine РёР· serverSeed СЂР°СѓРЅРґР°. РСЃРїРѕР»СЊР·СѓРµС‚
+     * РґРѕРјРµРЅРЅРѕРµ СЂР°Р·РґРµР»РµРЅРёРµ ("booster-line" РІРјРµСЃС‚Рѕ "crash" РІ HMAC), С‡С‚РѕР±С‹ РЅРµ
+     * РїРѕРІС‚РѕСЂСЏС‚СЊ С‚РѕС‚ Р¶Рµ СЃР°РјС‹Р№ РїРµСЂРІС‹Р№ random-Р·Р°Р±РѕСЂ, С‡С‚Рѕ Рё computeCrashFromSeed вЂ”
+     * РёРЅР°С‡Рµ crash Рё boosterLine РѕРєР°Р·Р°Р»РёСЃСЊ Р±С‹ СЃРєРѕСЂСЂРµР»РёСЂРѕРІР°РЅС‹ С‡РµСЂРµР· РѕРґРёРЅ Рё С‚РѕС‚
+     * Р¶Рµ РёСЃС…РѕРґРЅС‹Р№ СЃР»СѓС‡Р°Р№РЅС‹Р№ Р±РёС‚.
+     */
+    public int pickBoosterLineFromSeed(String serverSeed, Theme theme, GameConfig config) {
+        SecureRandom rng = deterministicRngFor(serverSeed, "booster-line");
+        return pickBoosterLine(theme, config, rng);
+    }
+
+    public int computeLevelsPassed(double currentMultiplier, GameConfig config, Theme theme) {
+        GameConfig.ThemeConfig themeConfig = requireThemeConfig(theme, config);
+        List<Double> boosterMultipliers = themeConfig.getBoosterMultipliers();
+
+        if (boosterMultipliers == null || boosterMultipliers.isEmpty()) {
+            return 0;
+        }
+
+        int levelsTotal = Math.min(themeConfig.getLevelsTotal(), boosterMultipliers.size());
+        int passed = 0;
+        for (int i = 0; i < levelsTotal; i++) {
+            if (currentMultiplier >= boosterMultipliers.get(i)) {
+                passed++;
+            }
+        }
+        return passed;
+    }
+
+    public int computePointsEarned(int levelsPassed, Double cashoutMultiplier, boolean boosterTriggered,
+                                   GameConfig config) {
+        int points = config.getPointsPerLine() * levelsPassed;
+        if (cashoutMultiplier != null) {
+            points += config.getPointsCashoutBonus();
+        }
+        if (boosterTriggered) {
+            points += config.getPointsBoosterBonus();
+        }
+        return points;
+    }
+
+    public Reward pickReward(GameConfig config, SecureRandom rng) {
+        Map<String, Double> rewardWeights = config.getRewardWeights();
+
+        double total = 0.0;
+        for (Double weight : rewardWeights.values()) {
+            total += weight;
+        }
+
+        double r = rng.nextDouble() * total;
+        double cumulative = 0.0;
+        for (Map.Entry<String, Double> entry : rewardWeights.entrySet()) {
+            cumulative += entry.getValue();
+            if (r < cumulative) {
+                return Reward.valueOf(entry.getKey());
+            }
+        }
+
+        String lastKey = null;
+        for (String key : rewardWeights.keySet()) {
+            lastKey = key;
+        }
+        return Reward.valueOf(lastKey);
+    }
+
+    private SecureRandom deterministicRngFor(String serverSeed, String purpose) {
+        byte[] seedBytes = HexFormat.of().parseHex(serverSeed);
+        byte[] derived = hmacSha256(seedBytes, purpose);
+        try {
+            SecureRandom rng = SecureRandom.getInstance(DETERMINISTIC_RNG_ALGORITHM);
+            rng.setSeed(derived);
+            return rng;
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(DETERMINISTIC_RNG_ALGORITHM + " not available", e);
+        }
+    }
+
+    private byte[] hmacSha256(byte[] keyBytes, String message) {
+        try {
+            Mac mac = Mac.getInstance(HMAC_ALGORITHM);
+            mac.init(new SecretKeySpec(keyBytes, HMAC_ALGORITHM));
+            return mac.doFinal(message.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            throw new IllegalStateException(HMAC_ALGORITHM + " not available", e);
+        }
+    }
+
+    private GameConfig.ThemeConfig requireThemeConfig(Theme theme, GameConfig config) {
+        GameConfig.ThemeConfig themeConfig = config.getThemes().get(theme.name());
+        if (themeConfig == null) {
+            throw new IllegalArgumentException("No config found for theme " + theme.name());
+        }
+        return themeConfig;
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\service\RoundService.java =====
+package com.crash.Raketka.service;
+
+import com.crash.Raketka.config.ConfigService;
+import com.crash.Raketka.config.GameConfig;
+import com.crash.Raketka.domain.Reward;
+import com.crash.Raketka.domain.Round;
+import com.crash.Raketka.domain.RoundStatus;
+import com.crash.Raketka.domain.Theme;
+import com.crash.Raketka.domain.User;
+import com.crash.Raketka.dto.RoundStateResponse;
+import com.crash.Raketka.dto.StartRoundRequest;
+import com.crash.Raketka.dto.StartRoundResponse;
+import com.crash.Raketka.exception.NotEnoughBalanceException;
+import com.crash.Raketka.exception.RoundAlreadyCrashedException;
+import com.crash.Raketka.repository.RoundRepository;
+import com.crash.Raketka.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.Instant;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Set;
+
+@Service
+public class RoundService {
+
+    private static final Logger log = LoggerFactory.getLogger(RoundService.class);
+    private static final Set<Integer> ALLOWED_BOOSTERS = Set.of(1, 2, 3, 4);
+
+    private final RoundRepository roundRepository;
+    private final UserRepository userRepository;
+    private final ConfigService configService;
+    private final CrashMathService crashMathService;
+    private final JsonMapper jsonMapper;
+
+    // Self-РёРЅСЉРµРєС†РёСЏ С‡РµСЂРµР· @Lazy: checkOneRound/cashoutAttempt С‚СЂРµР±СѓСЋС‚ С‚СЂР°РЅР·Р°РєС†РёР№,
+    // РєРѕС‚РѕСЂС‹Рµ Spring РЅРµ РїСЂРёРјРµРЅРёС‚ РїСЂРё РІС‹Р·РѕРІРµ С‡РµСЂРµР· this.method().
+    private final RoundService self;
+
+    public RoundService(RoundRepository roundRepository,
+                        UserRepository userRepository,
+                        ConfigService configService,
+                        CrashMathService crashMathService,
+                        JsonMapper jsonMapper,
+                        @Lazy RoundService self) {
+        this.roundRepository = roundRepository;
+        this.userRepository = userRepository;
+        this.configService = configService;
+        this.crashMathService = crashMathService;
+        this.jsonMapper = jsonMapper;
+        this.self = self;
+    }
+
+    @Transactional
+    public StartRoundResponse startRound(Long userId, StartRoundRequest req) {
+        if (req.betAmount() <= 0) {
+            throw new IllegalArgumentException("betAmount must be positive");
+        }
+        if (req.theme() == null) {
+            throw new IllegalArgumentException("theme must not be null");
+        }
+        if (!ALLOWED_BOOSTERS.contains(req.boosterMultiplier())) {
+            throw new IllegalArgumentException("boosterMultiplier must be one of 1, 2, 3, 4");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new NoSuchElementException("user not found: " + userId));
+        if (req.betAmount() > user.getBalance()) {
+            throw new NotEnoughBalanceException("betAmount exceeds current balance");
+        }
+
+        user.setBalance(user.getBalance() - req.betAmount());
+        userRepository.save(user);
+
+        GameConfig config = configService.get();
+        GameConfig.ThemeConfig themeConfig = themeConfigFor(req.theme(), config);
+
+        String serverSeed = generateServerSeed(config);
+        String seedHash = sha256Hex(serverSeed);
+
+        double crashMultiplier = crashMathService.computeCrashFromSeed(serverSeed, config, req.theme());
+        int boosterLine = crashMathService.pickBoosterLineFromSeed(serverSeed, req.theme(), config);
+
+        String configSnapshotJson;
+        try {
+            configSnapshotJson = jsonMapper.writeValueAsString(config);
+        } catch (Exception e) {
+            throw new IllegalStateException("unable to serialize config snapshot", e);
+        }
+
+        Round round = new Round(
+                req.theme(),
+                userId,
+                req.betAmount(),
+                req.boosterMultiplier(),
+                crashMultiplier,
+                boosterLine,
+                false,
+                RoundStatus.IN_PROGRESS,
+                0,
+                Instant.now(),
+                serverSeed,
+                seedHash,
+                configSnapshotJson
+        );
+
+        round = roundRepository.save(round);
+
+        log.info("round {} started: user={}, theme={}, bet={}, booster={}",
+                round.getId(), userId, req.theme(), req.betAmount(), req.boosterMultiplier());
+
+        return new StartRoundResponse(
+                round.getId(),
+                seedHash,
+                round.getStartedAt(),
+                req.theme(),
+                themeConfig.getLevelsTotal(),
+                req.betAmount(),
+                req.boosterMultiplier()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public RoundStateResponse getState(Long userId, Long roundId) {
+        Round round = roundRepository.findByIdAndUserId(roundId, userId)
+                .orElseThrow(() -> new NoSuchElementException("round not found"));
+        GameConfig snapshotConfig = snapshotOf(round);
+
+        if (round.getStatus() == RoundStatus.IN_PROGRESS) {
+            double rawCurrent = crashMathService.computeCurrentMultiplier(
+                    snapshotConfig.getMultiplierGrowthRate(), round.getStartedAt(), Instant.now());
+            double current = previewWithBooster(round, snapshotConfig, rawCurrent);
+
+            // РћРєРЅРѕ РєСЂР°С…Р°: РЅРµ СЃРѕС…СЂР°РЅСЏРµРј РІ Р‘Р”, РїР»Р°РЅРёСЂРѕРІС‰РёРє РґРѕРіРѕРЅРёС‚.
+            if (current >= round.getCrashMultiplier()) {
+                return crashedPreviewResponse(round, snapshotConfig);
+            }
+            return toResponse(round, current, snapshotConfig);
+        }
+
+        return toResponse(round, currentMultiplierOrFinal(round), snapshotConfig);
+    }
+
+    public RoundStateResponse cashout(Long userId, Long roundId) {
+        try {
+            return self.cashoutAttempt(userId, roundId);
+        } catch (OptimisticLockingFailureException e) {
+            log.warn("round {}: optimistic lock conflict during cashout, retrying once", roundId);
+            return self.cashoutAttempt(userId, roundId);
+        }
+    }
+
+    @Transactional
+    public RoundStateResponse cashoutAttempt(Long userId, Long roundId) {
+        Round round = roundRepository.findByIdAndUserId(roundId, userId)
+                .orElseThrow(() -> new NoSuchElementException("round not found"));
+
+        if (round.getStatus() != RoundStatus.IN_PROGRESS) {
+            log.info("round {} cashout called but round already finished with status={}",
+                    round.getId(), round.getStatus());
+            return toResponse(round, currentMultiplierOrFinal(round), snapshotOf(round));
+        }
+
+        GameConfig snapshotConfig = snapshotOf(round);
+        double rawCurrent = crashMathService.computeCurrentMultiplier(
+                snapshotConfig.getMultiplierGrowthRate(), round.getStartedAt(), Instant.now());
+        double current = applyBoosterAndFlag(round, snapshotConfig, rawCurrent);
+
+        if (current >= round.getCrashMultiplier()) {
+            markCrashed(round, snapshotConfig);
+            log.info("round {} crashed before cashout could be processed", round.getId());
+            throw new RoundAlreadyCrashedException("round already crashed",
+                    toResponse(round, current, snapshotConfig));
+        }
+
+        round.setStatus(RoundStatus.CASHED_OUT);
+        round.setCashoutMultiplier(current);
+        round.setFinishedAt(Instant.now());
+
+        int levelsPassed = crashMathService.computeLevelsPassed(current, snapshotConfig, round.getTheme());
+        int pointsEarned = crashMathService.computePointsEarned(
+                levelsPassed, current, round.isBoosterTriggered(), snapshotConfig);
+        round.setPointsEarned(pointsEarned);
+
+        Long ownerId = round.getUserId();
+        User user = userRepository.findById(ownerId)
+                .orElseThrow(() -> new NoSuchElementException("user not found: " + ownerId));
+        int payout = (int) Math.round(round.getBetAmount() * current * round.getBoosterMultiplier());
+        user.setBalance(user.getBalance() + payout);
+        user.setPoints(user.getPoints() + pointsEarned);
+        userRepository.save(user);
+
+        round = roundRepository.save(round);
+
+        log.info("round {} cashed out at {}x, payout={}, points={}",
+                round.getId(), current, payout, pointsEarned);
+
+        return toResponse(round, current, snapshotConfig);
+    }
+
+    @Scheduled(fixedDelay = 200)
+    public void checkActiveRounds() {
+        List<Round> active = roundRepository.findByStatus(RoundStatus.IN_PROGRESS);
+        for (Round r : active) {
+            try {
+                self.checkOneRound(r.getId());
+            } catch (OptimisticLockingFailureException e) {
+                log.warn("round {}: skipped this tick due to concurrent modification", r.getId());
+            } catch (RuntimeException e) {
+                log.error("round {}: unexpected error during scheduled check", r.getId(), e);
+            }
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void checkOneRound(Long roundId) {
+        Round round = roundRepository.findById(roundId).orElse(null);
+        if (round == null || round.getStatus() != RoundStatus.IN_PROGRESS) {
+            return;
+        }
+
+        GameConfig snapshotConfig = snapshotOf(round);
+        double rawCurrent = crashMathService.computeCurrentMultiplier(
+                snapshotConfig.getMultiplierGrowthRate(), round.getStartedAt(), Instant.now());
+        double current = applyBoosterAndFlag(round, snapshotConfig, rawCurrent);
+
+        if (current >= round.getCrashMultiplier()) {
+            markCrashed(round, snapshotConfig);
+        } else if (round.isBoosterTriggered()) {
+            // СЃРѕС…СЂР°РЅСЏРµРј СЃРѕСЃС‚РѕСЏРЅРёРµ, РµСЃР»Рё Р±СѓСЃС‚РµСЂ С‚РѕР»СЊРєРѕ С‡С‚Рѕ РїРµСЂРµРєР»СЋС‡РёР»СЃСЏ
+            roundRepository.save(round);
+        }
+    }
+
+    private double applyBoosterAndFlag(Round round, GameConfig config, double rawCurrent) {
+        GameConfig.ThemeConfig themeConfig = themeConfigFor(round.getTheme(), config);
+        double lineMultiplier = themeConfig.getBoosterMultipliers().get(round.getBoosterLine());
+
+        if (round.isBoosterTriggered()) {
+            return rawCurrent * lineMultiplier;
+        }
+        if (rawCurrent >= lineMultiplier) {
+            round.setBoosterTriggered(true);
+            return rawCurrent * lineMultiplier;
+        }
+        return rawCurrent;
+    }
+
+    private double previewWithBooster(Round round, GameConfig config, double rawCurrent) {
+        GameConfig.ThemeConfig themeConfig = themeConfigFor(round.getTheme(), config);
+        double lineMultiplier = themeConfig.getBoosterMultipliers().get(round.getBoosterLine());
+
+        if (round.isBoosterTriggered() || rawCurrent >= lineMultiplier) {
+            return rawCurrent * lineMultiplier;
+        }
+        return rawCurrent;
+    }
+
+    private void markCrashed(Round round, GameConfig config) {
+        round.setStatus(RoundStatus.CRASHED);
+        round.setFinishedAt(Instant.now());
+
+        int levelsPassed = crashMathService.computeLevelsPassed(
+                round.getCrashMultiplier(), config, round.getTheme());
+        round.setPointsEarned(crashMathService.computePointsEarned(
+                levelsPassed, round.getCashoutMultiplier(), round.isBoosterTriggered(), config));
+
+        SecureRandom rng = new SecureRandom();
+        Reward reward = crashMathService.pickReward(config, rng);
+        round.setReward(reward);
+
+        User user = userRepository.findById(round.getUserId())
+                .orElseThrow(() -> new NoSuchElementException("user not found: " + round.getUserId()));
+        user.setPoints(user.getPoints() + round.getPointsEarned());
+        userRepository.save(user);
+
+        roundRepository.save(round);
+
+        log.info("round {} crashed at {}x, levelsPassed={}, points={}, reward={}",
+                round.getId(), round.getCrashMultiplier(), levelsPassed, round.getPointsEarned(), reward);
+    }
+
+    private double currentMultiplierOrFinal(Round round) {
+        if (round.getStatus() == RoundStatus.CASHED_OUT && round.getCashoutMultiplier() != null) {
+            return round.getCashoutMultiplier();
+        }
+        if (round.getStatus() == RoundStatus.CRASHED) {
+            return round.getCrashMultiplier();
+        }
+        return 0.0;
+    }
+
+    private RoundStateResponse crashedPreviewResponse(Round round, GameConfig config) {
+        int levelsPassed = crashMathService.computeLevelsPassed(
+                round.getCrashMultiplier(), config, round.getTheme());
+        String reward = round.getReward() != null ? round.getReward().toString() : null;
+
+        return new RoundStateResponse(
+                RoundStatus.CRASHED.toString(),
+                round.getCrashMultiplier(),
+                levelsPassed,
+                round.isBoosterTriggered(),
+                round.getCashoutMultiplier(),
+                round.getCrashMultiplier(),
+                round.getPointsEarned(),
+                reward,
+                null,
+                round.getServerSeed()
+        );
+    }
+
+    private RoundStateResponse toResponse(Round round, double current, GameConfig config) {
+        int levelsPassed = crashMathService.computeLevelsPassed(
+                round.getStatus() == RoundStatus.IN_PROGRESS ? current : round.getCrashMultiplier(),
+                config,
+                round.getTheme()
+        );
+
+        Double missedMultiplier = null;
+        if (round.getStatus() == RoundStatus.CRASHED && round.getCashoutMultiplier() != null) {
+            missedMultiplier = round.getCrashMultiplier();
+        }
+
+        String reward = round.getReward() != null ? round.getReward().toString() : null;
+        String serverSeed = round.getStatus() != RoundStatus.IN_PROGRESS ? round.getServerSeed() : null;
+
+        return new RoundStateResponse(
+                round.getStatus().toString(),
+                current,
+                levelsPassed,
+                round.isBoosterTriggered(),
+                round.getCashoutMultiplier(),
+                round.getStatus() == RoundStatus.CRASHED ? round.getCrashMultiplier() : null,
+                round.getPointsEarned(),
+                reward,
+                missedMultiplier,
+                serverSeed
+        );
+    }
+
+    private GameConfig snapshotOf(Round round) {
+        try {
+            return jsonMapper.readValue(round.getConfigSnapshotJson(), GameConfig.class);
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "unable to deserialize config snapshot for round " + round.getId(), e);
+        }
+    }
+
+    private String generateServerSeed(GameConfig config) {
+        if (config.getFixedSeed() != null) {
+            return String.format("%016x", config.getFixedSeed());
+        }
+        byte[] seedBytes = new byte[32];
+        new SecureRandom().nextBytes(seedBytes);
+        return HexFormat.of().formatHex(seedBytes);
+    }
+
+    private GameConfig.ThemeConfig themeConfigFor(Theme theme, GameConfig config) {
+        GameConfig.ThemeConfig themeConfig = config.getThemes().get(theme.name());
+        if (themeConfig == null) {
+            throw new IllegalArgumentException("No config found for theme " + theme.name());
+        }
+        return themeConfig;
+    }
+
+    private String sha256Hex(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\service\UserService.java =====
+package com.crash.Raketka.service;
+
+import com.crash.Raketka.domain.User;
+import com.crash.Raketka.dto.UserResponse;
+import com.crash.Raketka.repository.UserRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.NoSuchElementException;
+
+@Service
+public class UserService {
+
+    private final UserRepository userRepository;
+
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    public UserResponse getProfile(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new NoSuchElementException("user not found"));
+        return new UserResponse(user.getId(), user.getUsername(),
+                user.getBalance(), user.getPoints());
+    }
+}
+
+===== D:\project\Raketka\src\main\java\com\crash\Raketka\RaketkaApplication.java =====
+package com.crash.Raketka;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class RaketkaApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(RaketkaApplication.class, args);
+	}
+
+}
+
+===== D:\project\Raketka\src\main\resources\application.yml =====
+spring:
+  datasource:
+    url: jdbc:postgresql://[::1]:5432/vozshar
+    username: app
+    password: app
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  task:
+    scheduling:
+      pool:
+        size: 4
+
+server:
+  port: 8080
+
+===== D:\project\Raketka\src\test\java\com\crash\Raketka\RaketkaApplicationTests.java =====
+package com.crash.Raketka;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class RaketkaApplicationTests {
+
+	@Test
+	void contextLoads() {
+	}
+
+}
+
+===== D:\project\Raketka\pom.xml =====
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>4.1.1</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.crash</groupId>
+	<artifactId>Raketka</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name/>
+	<description/>
+	<url/>
+	<licenses>
+		<license/>
+	</licenses>
+	<developers>
+		<developer/>
+	</developers>
+	<scm>
+		<connection/>
+		<developerConnection/>
+		<tag/>
+		<url/>
+	</scm>
+	<properties>
+		<java.version>25</java.version>
+	</properties>
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webmvc</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>3.0.1</version>
+		</dependency>
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webmvc-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
+
+===== D:\project\Raketka\config.json =====
+{
+  "minCrashMultiplier": 1.01,
+  "maxMultiplier": 100.0,
+  "multiplierGrowthRate": 0.15,
+  "houseEdge": 0.03,
+  "pollIntervalMs": 450,
+  "pointsPerLine": 10,
+  "pointsCashoutBonus": 25,
+  "pointsBoosterBonus": 50,
+  "startingBalance": 100000,
+  "fixedSeed": null,
+  "themes": {
+    "RED": {
+      "lineProbabilities": [0.4, 0.3, 0.2, 0.1],
+      "boosterMultipliers": [1.5, 2.0, 3.0, 5.0],
+      "levelsTotal": 4
+    },
+    "GREEN": {
+      "lineProbabilities": [0.35, 0.35, 0.2, 0.1],
+      "boosterMultipliers": [1.5, 2.5, 4.0, 6.0],
+      "levelsTotal": 4
+    }
+  },
+  "rewardWeights": {
+    "PUZZLE_A": 0.5,
+    "PUZZLE_B": 0.3,
+    "PUZZLE_C": 0.2
+  }
+}
+

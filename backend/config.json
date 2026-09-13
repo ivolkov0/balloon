@@ -1,0 +1,40 @@
+{
+  "gameId": "vozdushny-shar",
+  "gameName": "Воздушный Шар",
+  "gameType": "crash_bonus",
+  "isActive": true,
+  "minCrashMultiplier": 1.01,
+  "maxMultiplier": 100.0,
+  "multiplierGrowthRate": 0.15,
+  "houseEdge": 0.03,
+  "pointsPerLine": 10,
+  "pointsCashoutBonus": 25,
+  "pointsBoosterBonus": 50,
+  "pointsSetCompleteBonus": 200,
+  "startingBalance": 100000,
+  "fixedSeed": null,
+  "fragments": [
+    { "id": 0, "betAmount": 50, "boosterValue": 1 },
+    { "id": 1, "betAmount": 150, "boosterValue": 2 },
+    { "id": 2, "betAmount": 300, "boosterValue": 3 },
+    { "id": 3, "betAmount": 600, "boosterValue": 4 }
+  ],
+  "themes": {
+    "RED": {
+      "levelsTotal": 12,
+      "lineProbabilities": [0.1983, 0.1626, 0.1334, 0.1094, 0.0897, 0.0735, 0.0603, 0.0494, 0.0405, 0.0332, 0.0273, 0.0224],
+      "levelThresholds": [1.10, 1.33, 1.60, 1.92, 2.32, 2.79, 3.37, 4.06, 4.89, 5.89, 7.10, 8.56]
+    },
+    "GREEN": {
+      "levelsTotal": 9,
+      "lineProbabilities": [0.2162, 0.1773, 0.1454, 0.1192, 0.0978, 0.0802, 0.0657, 0.0539, 0.0442],
+      "levelThresholds": [1.10, 1.38, 1.73, 2.17, 2.73, 3.42, 4.30, 5.39, 6.77]
+    }
+  },
+  "rewardWeights": {
+    "PUZZLE_A": 0.4,
+    "PUZZLE_B": 0.3,
+    "PUZZLE_C": 0.2,
+    "PUZZLE_D": 0.1
+  }
+}
