@@ -1,0 +1,211 @@
+/* Переменные темы и общие keyframes. Тема переключается через [data-theme]
+   на корневом контейнере (App.jsx).
+
+   Палитра — тёплая полуреалистичная иллюстрация в духе приключенческой
+   настольной игры: насыщенные, но не кислотные цвета, мягкий свет. */
+
+:root {
+  --track-height: 380px;
+  --text-main: #1b1b1f;
+  --text-muted: #6b6b76;
+  --surface: #ffffff;
+  --surface-muted: #f2f3f7;
+  --danger: #e0413b;
+  --success: #3b9a3a;
+  --gold: #e8992a;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow-soft: 0 8px 24px rgba(20, 20, 40, 0.1);
+  --shadow-strong: 0 16px 40px rgba(20, 20, 40, 0.22);
+  --font-display: 'Fredoka', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Nunito', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* Тона 4 фрагментов коллекции пазла — те же цвета, что у reward-puzzle-*.png */
+  --puzzle-blue: #2f86d6;
+  --puzzle-purple: #8a4fd4;
+  --puzzle-gold: #f0952a;
+  --puzzle-green: #21a68c;
+
+  /* Универсальные тона (не зависят от темы красный/зелёный) */
+  --mult-color: #ffd54a; /* коэффициент — насыщенный тёплый жёлтый */
+  --cashout-from: #6fcb53; /* кнопка "Забрать" всегда зелёная, вне зависимости от темы */
+  --cashout-light: #a3e08c;
+  --cashout-to: #3b9a3a;
+  --cashout-edge: #2b7a2a;
+}
+
+[data-theme='green'] {
+  --accent: #3fae7a;
+  --accent-dark: #1f6b45;
+  --accent-light: #7fd9ae;
+  --accent-edge: #164f33;
+  --accent-soft: #d9f4e6;
+  --accent-rgb: 63, 174, 122;
+  --accent-cream: #eafbf1;
+  --levels-total: 9;
+  /* небо холоднее, чем у красной темы */
+  --sky-top: #6fb0d6;
+  --sky-horizon: #cfe8c8;
+  --ground-far: #a9d9be;
+  --ground-near: #4f8f6c;
+}
+
+[data-theme='red'] {
+  --accent: #e0413b;
+  --accent-dark: #a32d2d;
+  --accent-light: #ff8f72;
+  --accent-edge: #7a1f1f;
+  --accent-soft: #fde1de;
+  --accent-rgb: 224, 65, 59;
+  --accent-cream: #fff3d6;
+  --levels-total: 12;
+  --sky-top: #6fb8e0;
+  --sky-horizon: #f4b98a;
+  --ground-far: #e8b98f;
+  --ground-near: #b5654a;
+}
+
+/* Стадии подсветки коэффициента (раздел 1.3 ТЗ): 0-1 обычный, 1-2 жёлтый,
+   2-3 жёлтый+подсветка, 3+ жёлтый+подсветка+крупнее. Свечение и толщина
+   обводки нарастают вместе со стадией — сам цвет один и тот же насыщенный
+   жёлтый, эффект усиливается интенсивностью, а не сменой оттенка. */
+.multiplier-stage-0 {
+  color: #ffffff;
+  -webkit-text-stroke: 2px rgba(40, 30, 20, 0.4);
+}
+.multiplier-stage-1 {
+  color: var(--mult-color);
+  -webkit-text-stroke: 2.5px rgba(120, 60, 10, 0.5);
+  filter: drop-shadow(0 0 6px rgba(255, 138, 61, 0.45));
+}
+.multiplier-stage-2 {
+  color: var(--mult-color);
+  -webkit-text-stroke: 3px rgba(120, 60, 10, 0.55);
+  filter: drop-shadow(0 0 14px rgba(255, 138, 61, 0.75)) drop-shadow(0 0 5px rgba(255, 213, 74, 0.9));
+}
+.multiplier-stage-3 {
+  color: var(--mult-color);
+  -webkit-text-stroke: 3.5px rgba(120, 60, 10, 0.6);
+  filter: drop-shadow(0 0 24px rgba(255, 138, 61, 0.9)) drop-shadow(0 0 8px rgba(255, 213, 74, 1));
+  transform: scale(1.12);
+}
+
+@keyframes float-balloon {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(2deg);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 16px rgba(var(--accent-rgb), 0);
+  }
+}
+
+@keyframes ring-pulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+@keyframes shake-screen {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px) rotate(-0.5deg);
+  }
+  40% {
+    transform: translateX(5px) rotate(0.5deg);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+@keyframes pop-badge {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.is-shaking {
+  animation: shake-screen 0.4s ease;
+}
+
+@keyframes drift-x {
+  from {
+    transform: translateX(-20vw);
+  }
+  to {
+    transform: translateX(120vw);
+  }
+}
+
+@keyframes flap-wings {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.55);
+  }
+}
+
+@keyframes flicker-flame {
+  0%,
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+@keyframes drift-island {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+/* Облака "дышат" на месте (лёгкое покачивание + едва заметный вдох-выдох),
+   отдельно от горизонтального дрейфа родителя — не полёт, а живое покачивание. */
+@keyframes cloud-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-8px) scale(1.04);
+  }
+}

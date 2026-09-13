@@ -1,0 +1,232 @@
+/* ==========================================================================
+   BalancePill — glossy blue currency pill, pure CSS
+   [COIN] [ value ] [ + ]
+   ==========================================================================
+   No images/SVG/canvas anywhere: the pill's glass bevel, the coin's rim/star
+   and the plus button's 3D bevel are all gradients + box-shadow + a couple
+   of pseudo-elements. See the notes above each block for what each layer is
+   doing, and the summary at the bottom of the component file for a quick
+   recap of which property does what.
+   ========================================================================== */
+
+.balance-pill {
+  --pill-h: clamp(64px, 17vw, 76px);
+  --pill-w: clamp(230px, 62vw, 270px);
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: var(--pill-w);
+  height: var(--pill-h);
+  padding: 0 10px 0 14px;
+  border-radius: 999px;
+  box-sizing: border-box;
+  overflow: hidden;
+
+  font-family: var(--font-display, 'Fredoka', 'Segoe UI', system-ui, sans-serif);
+
+  /* ---- glass base -------------------------------------------------------
+     "Dark blue glass with a luminous cyan edge", not a bright cyan button:
+     the body itself is a dark, saturated azure — all the cyan lives on the
+     rim/glow/highlights layered on top via border + box-shadow + the two
+     pseudo-elements below. */
+  background: linear-gradient(180deg, #075aa8 0%, #064c98 45%, #043f87 100%);
+  border: 2px solid rgba(175, 244, 255, 0.9);
+  box-shadow:
+    /* cyan glow around the perimeter — tight bright core + wider soft halo */
+    0 0 8px rgba(82, 218, 255, 0.85),
+    0 0 22px rgba(30, 160, 255, 0.55),
+    /* bevel: faint top sheen, deep dark-blue shade low inside */
+    inset 0 2px 3px rgba(255, 255, 255, 0.38),
+    inset 0 -3px 8px rgba(0, 20, 80, 0.45),
+    /* grounding drop shadow */
+    0 8px 16px rgba(3, 20, 55, 0.4);
+}
+
+/* Glossy highlight near the top: a wide, low, blurred white/cyan ellipse
+   that only pokes through the upper third of the pill (clipped by
+   overflow: hidden on .balance-pill) — reads as a curved glass reflection,
+   not a flat stripe, and stays subtle enough that the dark body still
+   reads as dark. */
+.balance-pill::before {
+  content: '';
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: -38%;
+  height: 65%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(210, 248, 255, 0.55) 0%, rgba(210, 248, 255, 0) 100%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Second, fainter cyan reflection low in the pill, along the inner bottom
+   edge — the "light bounced off the bottom of the glass" companion to the
+   top highlight. */
+.balance-pill::after {
+  content: '';
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: -55%;
+  height: 55%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(120, 220, 255, 0.28) 0%, rgba(120, 220, 255, 0) 70%);
+  pointer-events: none;
+}
+
+/* Everything real (coin, value, plus button) sits above the two glass
+   pseudo-elements. */
+.balance-coin,
+.balance-value,
+.balance-plus {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- coin -----------------------------------------------------------------
+   48x48 circle, golden radial gradient for the "lit from upper-left" look,
+   a darker gold rim via border, a bright inner ring via ::before (inset a
+   few px) and a small glossy highlight via ::after — the "multiple layers"
+   the coin needs to read as 3D metal rather than a flat yellow circle. */
+.balance-coin {
+  --coin-size: clamp(38px, 10vw, 48px);
+  width: var(--coin-size);
+  height: var(--coin-size);
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 35% 30%, #fff3c4 0%, #ffd75e 35%, #f0a91e 75%, #c9791a 100%);
+  border: 2px solid #a86414;
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.8),
+    inset 0 -3px 4px rgba(140, 80, 10, 0.55),
+    0 0 6px rgba(255, 200, 60, 0.6);
+}
+
+/* Bright inner ring, inset from the outer rim — classic "coin has two
+   edges" read. */
+.balance-coin::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+}
+
+/* Small glossy highlight, upper-left, like light catching the rim. */
+.balance-coin::after {
+  content: '';
+  position: absolute;
+  top: 12%;
+  left: 18%;
+  width: 32%;
+  height: 20%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.8);
+  filter: blur(1px);
+  transform: rotate(-25deg);
+  pointer-events: none;
+}
+
+.balance-coin-star {
+  font-size: calc(var(--coin-size) * 0.5);
+  line-height: 1;
+  color: #fff7dd;
+  /* slight emboss: light highlight above, soft dark shadow below */
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6), 0 -1px 1px rgba(140, 80, 10, 0.5);
+}
+
+/* ---- value ---------------------------------------------------------------
+   Plain HTML text, centered in the remaining space between coin and plus
+   button (flex: 1 + text-align: center keeps it visually centered even
+   though the coin/plus aren't the same width). */
+.balance-value {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.05rem, 4.2vw, 1.35rem);
+  color: #ffffff;
+  text-shadow: 0 2px 3px rgba(3, 25, 60, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 6px;
+}
+
+/* ---- plus button -----------------------------------------------------------
+   Same "metal disc" recipe as the coin (gradient + border + inset bevel +
+   glossy highlight) but gold-on-gold since it's a call-to-action, not a
+   currency icon, plus real interactive states. */
+.balance-plus {
+  --plus-size: clamp(38px, 10vw, 48px);
+  width: var(--plus-size);
+  height: var(--plus-size);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  background: radial-gradient(circle at 35% 30%, #fff3c4 0%, #ffd75e 35%, #f0a91e 75%, #c9791a 100%);
+  border: 2px solid #a86414;
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.8),
+    inset 0 -3px 4px rgba(140, 80, 10, 0.55),
+    0 0 8px rgba(255, 200, 60, 0.5);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+
+.balance-plus::before {
+  content: '';
+  position: absolute;
+  top: 12%;
+  left: 18%;
+  width: 32%;
+  height: 20%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.8);
+  filter: blur(1px);
+  transform: rotate(-25deg);
+  pointer-events: none;
+}
+
+.balance-plus span {
+  position: relative;
+  font-size: calc(var(--plus-size) * 0.58);
+  line-height: 1;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(120, 60, 5, 0.5);
+  transform: translateY(-1px); /* optical-center the glyph in the circle */
+}
+
+.balance-plus:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.85),
+    inset 0 -3px 4px rgba(140, 80, 10, 0.55),
+    0 0 12px rgba(255, 210, 80, 0.75);
+  transform: scale(1.04);
+}
+
+.balance-plus:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.balance-plus:disabled {
+  cursor: default;
+  filter: grayscale(0.35) brightness(0.9);
+}
+
+.balance-plus:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}

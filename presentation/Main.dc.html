@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap');
+*{box-sizing:border-box;}
+body{margin:0;}
+.slide{width:1600px;height:900px;background:linear-gradient(180deg,#eef7f1 0%,#fbf8f3 55%,#fbf8f3 100%);font-family:'Nunito',system-ui,sans-serif;color:#1b1b1f;position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+.sky-dot{position:absolute;border-radius:50%;opacity:.5;}
+.eyebrow{display:flex;align-items:center;gap:10px;font-family:'Fredoka',sans-serif;font-weight:600;font-size:20px;color:#1f6b45;letter-spacing:.04em;text-transform:uppercase;margin-bottom:28px;}
+h1{font-family:'Fredoka',sans-serif;font-weight:700;font-size:118px;line-height:1.0;margin:0;color:#173323;}
+h1 span{color:#e0413b;}
+.subtitle{font-family:'Nunito',sans-serif;font-weight:700;font-size:30px;color:#3a4a40;margin:26px 0 6px;}
+.tagline{font-family:'Nunito',sans-serif;font-weight:600;font-size:20px;color:#6b6b76;margin:0;}
+.balloons{display:flex;gap:64px;margin-top:56px;align-items:flex-end;}
+</style>
+</helmet>
+<div class="slide">
+  <div class="sky-dot" style="width:160px;height:160px;background:#cfe8c8;top:80px;left:120px;"></div>
+  <div class="sky-dot" style="width:100px;height:100px;background:#fde1de;top:620px;right:160px;"></div>
+  <div class="sky-dot" style="width:70px;height:70px;background:#d9f4e6;bottom:120px;left:220px;"></div>
+
+  <div class="eyebrow">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 3c4 0 6.5 3 6.5 6.5S16 16 12 16 5.5 13 5.5 9.5 8 3 12 3z" stroke="#1f6b45" stroke-width="1.8"/><path d="M12 16v4M10 20h4" stroke="#1f6b45" stroke-width="1.8" stroke-linecap="round"/></svg>
+    ФСП · Чемпионат России 2026 · Программирование продуктовое
+  </div>
+
+  <h1>Воздушный <span>Шар</span></h1>
+  <div class="subtitle">Бонусная crash-игра с турнирной механикой</div>
+  <div class="tagline">Выше риск — больше награда</div>
+
+  <div class="balloons">
+    <svg width="86" height="120" viewBox="0 0 86 120" fill="none">
+      <ellipse cx="43" cy="46" rx="38" ry="46" fill="#3fae7a"/>
+      <ellipse cx="30" cy="30" rx="10" ry="16" fill="#7fd9ae" opacity="0.6"/>
+      <path d="M43 92v14M36 96l14 10M50 96l-14 10" stroke="#1f6b45" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+    <svg width="86" height="120" viewBox="0 0 86 120" fill="none">
+      <ellipse cx="43" cy="46" rx="38" ry="46" fill="#e0413b"/>
+      <ellipse cx="30" cy="30" rx="10" ry="16" fill="#ff8f72" opacity="0.6"/>
+      <path d="M43 92v14M36 96l14 10M50 96l-14 10" stroke="#a32d2d" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,57 @@
+# Полный стек одной командой: postgres + backend (raketka) + frontend (nginx,
+# отдаёт статическую сборку и проксирует /api). Предполагает, что репозиторий
+# бэкенда склонирован РЯДОМ с этим (сиблинг-папка) — см. build: ../raketka.
+#
+#   git clone <raketka-repo-url> ../raketka
+#   docker compose up -d --build
+#
+# Открыть: http://<адрес-сервера>/ — единственный порт наружу, который
+# нужен экспертам (backend/Postgres из мира недоступны, только внутри сети).
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: vozshar
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d vozshar"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ../raketka
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vozshar
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: app
+    volumes:
+      # Бинд-маунт, а не то, что запечено в образ на этапе build — правишь
+      # ../raketka/config.json на сервере и жмёшь POST /api/admin/config/reload
+      # (см. ТЗ п.1.9/Сценарий 5), без пересборки контейнера.
+      - ../raketka/config.json:/config.json
+    ports:
+      # Наружу — ради Swagger (/swagger-ui.html) и прямых curl-проверок
+      # экспертами (см. Критерии, "Техническая проверяемость backend").
+      # Если не нужно — можно убрать, фронт достаёт бэкенд и так, по имени
+      # сервиса внутри сети.
+      - "8080:8080"
+
+  frontend:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  pg-data:
