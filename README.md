@@ -4,7 +4,7 @@ React + Vite. Четыре экрана (`ThemeScreen` → `BetScreen` → `Game
 переключаемые через один `useState` в `App.jsx` — без `react-router`.
 
 Вся игровая логика — в `src/hooks/useGameState.js`. Ходит в реальный Spring Boot backend
-(`github.com/NikitSik/raketka`) через `src/api/client.js`: гостевая авторизация по
+(`backend/`, изначально `github.com/NikitSik/raketka`) через `src/api/client.js`: гостевая авторизация по
 `X-Session-Token` (токен в `sessionStorage` — своя сессия на каждую вкладку), `GET
 /api/config/public` (без auth — фрагменты ставок и пороги уровней, без внутренней
 математики), `POST /round/start` → `GET /round/{id}/state` (поллинг ~300мс) → `POST
@@ -16,14 +16,13 @@ React + Vite. Четыре экрана (`ThemeScreen` → `BetScreen` → `Game
 
 ## Деплой на сервер (прод)
 
-Один `docker-compose.yml` в этом репозитории поднимает всё: Postgres + backend
-(`raketka`) + сам фронт (статическая `vite build` за nginx, который проксирует `/api`
-на backend — один порт наружу, без CORS). Предполагается, что репозиторий `raketka`
-склонирован **рядом**, сиблинг-папкой:
+Один `docker-compose.yml` в этом репозитории поднимает весь стек: Postgres + backend
+(`backend/` — исходники raketka, часть этого же репозитория) + сам фронт (статическая
+`vite build` за nginx, который проксирует `/api` на backend — один порт наружу, без
+CORS). Отдельно ничего клонировать не нужно:
 
 ```bash
-git clone <frontend-repo-url> BallonFrontend
-git clone <raketka-repo-url> raketka
+git clone <this-repo-url> BallonFrontend
 cd BallonFrontend
 docker compose up -d --build
 ```
@@ -32,7 +31,7 @@ docker compose up -d --build
 доступен на `:8080` (Swagger — `/swagger-ui.html`, кнопка Authorize принимает токен из
 `/api/auth/guest`) — для прямых curl-проверок и технической проверяемости backend.
 
-Правки `raketka/config.json` на сервере подхватываются без пересборки образа —
+Правки `backend/config.json` на сервере подхватываются без пересборки образа —
 `docker-compose.yml` монтирует файл, а не запекает в образ; после правки:
 ```bash
 TOKEN=$(curl -s -X POST http://localhost/api/auth/guest -H "Content-Type: application/json" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
@@ -41,7 +40,7 @@ curl -X POST http://localhost/api/admin/config/reload -H "X-Session-Token: $TOKE
 
 Логи: `docker compose logs -f backend` / `frontend`. Остановить: `docker compose down`
 (volume `pg-data` — данные Postgres — остаётся; `down -v` стирает и его, нужно после
-смены структуры сущностей `User`/`Round` в `raketka`).
+смены структуры сущностей `User`/`Round` в `backend/`).
 
 ### Демо-доступ для экспертов
 
@@ -61,11 +60,11 @@ npm run dev
 ```
 Откроется на http://localhost:5173.
 
-Backend поднимается отдельно (репозиторий `raketka`) — на этой машине через Docker
-(нет Java 25/Maven на хосте), см. `README-DEV.md` в клоне `raketka`:
+Backend поднимается отдельно от `npm run dev` (сам фронт-дев-сервер его не запускает)
+— на этой машине через Docker (нет Java 25/Maven на хосте), см. `backend/README-DEV.md`:
 
 ```bash
-cd ../raketka   # или где склонирован backend
+cd backend
 docker compose up -d --build
 ```
 
@@ -78,7 +77,8 @@ Vite dev-сервер проксирует `/api/**` на `http://localhost:8080
 ```
 Dockerfile         прод-сборка фронта (node build → nginx)
 nginx.conf          прокси /api → backend, статика + SPA fallback
-docker-compose.yml  весь стек: postgres + backend (../raketka) + frontend
+docker-compose.yml  весь стек: postgres + backend (./backend) + frontend
+backend/            исходники бэкенда (Spring Boot), см. backend/README.md
 src/
   screens/       ThemeScreen, BetScreen, GameScreen, ResultScreen
   components/    PuzzlePiece, LevelTrack, Multiplier, HistoryList, RulesModal, ...
@@ -94,24 +94,7 @@ src/
   theme.css      CSS-переменные под красную/зелёную тему
 ```
 
-## Статус по ТЗ
 
-Обязательный минимум (раздел "Требования к решению" + сценарии 1-5) — реализован:
-выбор темы (доп. экран) → ставка (4 фрагмента с сервера, история глобальная по всем
-игрокам, доступ к правилам и с ThemeScreen, и с BetScreen, уведомление «Не хватает
-бонусов») → crash-цикл (рост коэффициента, «Забрать» строго по `canCashout`, шар летит
-дальше после cashout, стили коэффициента по уровням 0-3, мини-онбординг у кнопки
-«Забрать» разово, «+X» очков со звуком на каждом уровне) → бустер (маркер на уровне,
-резкое умножение, доп. очки, вспышка + звук) → результат (выигрыш/проигрыш, очки,
-награда — отдельная от очков и баланса сущность, «могли бы забрать больше», seed для
-provably-fair проверки, история, «Играть снова» с сохранением темы, автопереход 10 сек)
-→ управление параметрами (`config.json` бэкенда + `/api/admin/config/reload`, без
-перезапуска и без правки кода).
-
-Не реализовано (все — заявленные в ТЗ как дополнительные, не входят в обязательный
-минимум): живой рейтинг, турнирная таблица, апсейл-попап, полноценная админ-панель
-(только конфиг-файл + один reload-эндпоинт), мгновенный повтор ставки, восстановление
-раунда из localStorage после перезагрузки страницы.
 
 ## Особенности контракта, которые стоит держать в голове
 

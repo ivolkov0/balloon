@@ -1,8 +1,9 @@
-# Полный стек одной командой: postgres + backend (raketka) + frontend (nginx,
-# отдаёт статическую сборку и проксирует /api). Предполагает, что репозиторий
-# бэкенда склонирован РЯДОМ с этим (сиблинг-папка) — см. build: ../raketka.
+# Полный стек одной командой: postgres + backend (raketka, см. папку backend/)
+# + frontend (nginx, отдаёт статическую сборку и проксирует /api). Бэкенд —
+# часть этого же репозитория (backend/), отдельно клонировать ничего не нужно.
 #
-#   git clone <raketka-repo-url> ../raketka
+#   git clone <this-repo-url> BallonFrontend
+#   cd BallonFrontend
 #   docker compose up -d --build
 #
 # Открыть: http://<адрес-сервера>/ — единственный порт наружу, который
@@ -24,7 +25,7 @@ services:
       retries: 10
 
   backend:
-    build: ../raketka
+    build: ./backend
     restart: unless-stopped
     depends_on:
       postgres:
@@ -35,9 +36,9 @@ services:
       SPRING_DATASOURCE_PASSWORD: app
     volumes:
       # Бинд-маунт, а не то, что запечено в образ на этапе build — правишь
-      # ../raketka/config.json на сервере и жмёшь POST /api/admin/config/reload
+      # backend/config.json на сервере и жмёшь POST /api/admin/config/reload
       # (см. ТЗ п.1.9/Сценарий 5), без пересборки контейнера.
-      - ../raketka/config.json:/config.json
+      - ./backend/config.json:/config.json
     ports:
       # Наружу — ради Swagger (/swagger-ui.html) и прямых curl-проверок
       # экспертами (см. Критерии, "Техническая проверяемость backend").
