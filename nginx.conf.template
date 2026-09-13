@@ -1,0 +1,38 @@
+# /api проксируется на бэкенд — браузер видит только один origin, поэтому
+# CORS не нужен ни в деве (там та же роль у vite dev-proxy), ни в проде.
+#
+# Адрес бэкенда — через ${BACKEND_ORIGIN}, а не захардкожен: в docker-compose
+# (см. Dockerfile ENV) это внутреннее DNS-имя сервиса `backend`, а на PaaS
+# без общей docker-сети (например Render, где фронт и бэк — два раздельных
+# сервиса со своими публичными URL) сюда подставляется публичный origin
+# бэкенда. Файл — .template, nginx сам прогоняет его через envsubst при
+# старте контейнера (встроенный механизм официального образа nginx, см.
+# /etc/nginx/templates/) — подставляются только реальные переменные
+# окружения, свои переменные nginx ($host, $scheme и т.п.) не трогает.
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Аудио/картинки — можно кэшировать надолго, у сборки хэшированные имена
+    # для JS/CSS, а статика в public/ меняется редко.
+    location ~* \.(png|jpg|jpeg|svg|mp3|woff2?)$ {
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    location /api/ {
+        proxy_pass ${BACKEND_ORIGIN}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        try_files $uri /index.html;
+    }
+}

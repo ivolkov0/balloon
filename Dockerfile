@@ -10,5 +10,11 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# .template в /etc/nginx/templates/ — официальный образ nginx сам прогоняет
+# его через envsubst при старте и кладёт результат в conf.d/default.conf
+# (см. комментарий в nginx.conf.template). BACKEND_ORIGIN по умолчанию —
+# внутреннее DNS-имя сервиса из docker-compose; на Render и т.п. переопредели
+# переменной окружения на публичный URL бэкенд-сервиса.
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+ENV BACKEND_ORIGIN=http://backend:8080
 EXPOSE 80
