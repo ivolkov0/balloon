@@ -141,7 +141,16 @@ export default function BetScreen({
 
       <div className="bet-panel-frame">
         <div className="row-between" style={{ alignItems: 'center' }}>
-          <strong className="bet-panel-title">Выберите ставку</strong>
+          <span className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <strong className="bet-panel-title">Выберите ставку</strong>
+            {/* Количество уровней темы — обязательный пункт ТЗ 1.2/Сценарий 1
+                ("При переключении темы отображается соответствующее количество
+                уровней: 12 для красной и 9 для зелёной") и Критериев (Раздел 5
+                и 6, Сценарий 1). Раньше показывалось только на необязательном
+                ThemeScreen — здесь, на экране ставки, где сценарий реально
+                проверяется, значения не было вовсе. */}
+            <span className="levels-count-badge">{levelsTotal} уровней</span>
+          </span>
           <button className="rules-link-btn" onClick={() => setRulesOpen(true)} title="Правила игры">
             <Icon name="book" tone="paper" size={18} />
             Правила
